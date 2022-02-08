@@ -15,35 +15,37 @@
  *******************************************************************************/
 package com.qaprosoft.carina.core.foundation.api;
 
-import java.io.IOException;
-import java.lang.invoke.MethodHandles;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-
 import com.qaprosoft.apitools.builder.PropertiesProcessor;
+import com.qaprosoft.apitools.builder.PropertiesProcessorMain;
+import com.qaprosoft.apitools.message.TemplateMessage;
 import com.qaprosoft.apitools.validation.*;
+import com.qaprosoft.carina.core.foundation.api.annotation.ContentType;
+import com.qaprosoft.carina.core.foundation.api.annotation.RequestTemplatePath;
+import com.qaprosoft.carina.core.foundation.api.annotation.ResponseTemplatePath;
+import com.qaprosoft.carina.core.foundation.api.annotation.SuccessfulHttpStatus;
+import com.qaprosoft.carina.core.foundation.api.util.ActionPoller;
+import io.restassured.response.Response;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
 import org.skyscreamer.jsonassert.JSONCompareMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.qaprosoft.apitools.builder.PropertiesProcessorMain;
-import com.qaprosoft.apitools.message.TemplateMessage;
-import com.qaprosoft.carina.core.foundation.api.annotation.ContentType;
-import com.qaprosoft.carina.core.foundation.api.annotation.RequestTemplatePath;
-import com.qaprosoft.carina.core.foundation.api.annotation.ResponseTemplatePath;
-import com.qaprosoft.carina.core.foundation.api.annotation.SuccessfulHttpStatus;
-
-import io.restassured.response.Response;
-
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.net.URL;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
 
 public abstract class AbstractApiMethodV2 extends AbstractApiMethod {
     private static final Logger LOGGER = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-    
+
     private static final String ACCEPT_ALL_HEADER = "Accept=*/*";
+    private static final Duration POLLING_INTERVAL = Duration.ofSeconds(1);
+    private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private Properties properties;
     private List<Class<? extends PropertiesProcessor>> ignoredPropertiesProcessorClasses;
@@ -142,8 +144,22 @@ public abstract class AbstractApiMethodV2 extends AbstractApiMethod {
     }
 
     /**
+     * Calls some task (for default calls callAPI function) that will repeat its execution until a certain condition is met
+     * or the time  runs out
+     *
+     * @return object of ActionPoller class for setting other parameters for builder or calling execute method for
+     * getting the final result
+     */
+    public ActionPoller<Response> callAPIWithRetry() {
+        return ActionPoller.<Response>builder()
+                .task(this::callAPI)
+                .pollEvery(POLLING_INTERVAL.toMillis(), ChronoUnit.MILLIS)
+                .stopAfter(TIMEOUT.toMillis(), ChronoUnit.MILLIS);
+    }
+
+    /**
      * Sets path to .properties file which stores properties list for declared API method
-     * 
+     *
      * @param propertiesPath String path to properties file
      */
     public void setProperties(String propertiesPath) {
