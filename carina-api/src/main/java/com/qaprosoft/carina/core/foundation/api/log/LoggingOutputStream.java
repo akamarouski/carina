@@ -127,7 +127,7 @@ public class LoggingOutputStream extends OutputStream {
      * Closes this output stream and releases any system resources associated with this stream.
      */
     public void close() {
-        flush();
+        count = 0;
         hasBeenClosed = true;
     }
 }

@@ -23,7 +23,7 @@ import com.qaprosoft.carina.core.foundation.api.annotation.ContentType;
 import com.qaprosoft.carina.core.foundation.api.annotation.RequestTemplatePath;
 import com.qaprosoft.carina.core.foundation.api.annotation.ResponseTemplatePath;
 import com.qaprosoft.carina.core.foundation.api.annotation.SuccessfulHttpStatus;
-import com.qaprosoft.carina.core.foundation.api.util.ActionPoller;
+import com.qaprosoft.carina.core.foundation.api.util.ApiActionPoller;
 import io.restassured.response.Response;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
@@ -38,6 +38,7 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 
 public abstract class AbstractApiMethodV2 extends AbstractApiMethod {
@@ -144,17 +145,18 @@ public abstract class AbstractApiMethodV2 extends AbstractApiMethod {
     }
 
     /**
-     * Calls some task (for default calls callAPI function) that will repeat its execution until a certain condition is met
+     * Calls callAPI function that will repeat its execution until a certain condition is met
      * or the time  runs out
      *
-     * @return object of ActionPoller class for setting other parameters for builder or calling execute method for
+     * @return object of ApiActionPoller class for setting other parameters for builder or calling execute method for
      * getting the final result
      */
-    public ActionPoller<Response> callAPIWithRetry() {
-        return ActionPoller.<Response>builder()
-                .task(this::callAPI)
+    public ApiActionPoller callAPIWithRetry() {
+        return ApiActionPoller.builder(this)
                 .pollEvery(POLLING_INTERVAL.toMillis(), ChronoUnit.MILLIS)
-                .stopAfter(TIMEOUT.toMillis(), ChronoUnit.MILLIS);
+                .stopAfter(TIMEOUT.toMillis(), ChronoUnit.MILLIS)
+                .until(Objects::nonNull)
+                .setLoggingStrategy(rq -> true, rs -> true);
     }
 
     /**

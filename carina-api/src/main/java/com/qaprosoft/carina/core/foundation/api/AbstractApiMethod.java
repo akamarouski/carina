@@ -15,34 +15,7 @@
  *******************************************************************************/
 package com.qaprosoft.carina.core.foundation.api;
 
-import static io.restassured.RestAssured.given;
-
-import java.io.PrintStream;
-import java.lang.invoke.MethodHandles;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Map;
-
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-
-import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.http.conn.ssl.SSLSocketFactory;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.hamcrest.Matcher;
-import org.hamcrest.Matchers;
-import org.hamcrest.xml.HasXPath;
-
-import com.qaprosoft.carina.core.foundation.api.annotation.ContentType;
-import com.qaprosoft.carina.core.foundation.api.annotation.Endpoint;
-import com.qaprosoft.carina.core.foundation.api.annotation.HideRequestBodyPartsInLogs;
-import com.qaprosoft.carina.core.foundation.api.annotation.HideRequestHeadersInLogs;
-import com.qaprosoft.carina.core.foundation.api.annotation.HideResponseBodyPartsInLogs;
+import com.qaprosoft.carina.core.foundation.api.annotation.*;
 import com.qaprosoft.carina.core.foundation.api.http.ContentTypeEnum;
 import com.qaprosoft.carina.core.foundation.api.http.HttpClient;
 import com.qaprosoft.carina.core.foundation.api.http.HttpMethodType;
@@ -56,7 +29,6 @@ import com.qaprosoft.carina.core.foundation.api.ssl.SSLContextBuilder;
 import com.qaprosoft.carina.core.foundation.utils.Configuration;
 import com.qaprosoft.carina.core.foundation.utils.Configuration.Parameter;
 import com.qaprosoft.carina.core.foundation.utils.R;
-
 import io.restassured.RestAssured;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.config.SSLConfig;
@@ -65,6 +37,27 @@ import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.http.conn.ssl.SSLSocketFactory;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.hamcrest.Matcher;
+import org.hamcrest.Matchers;
+import org.hamcrest.xml.HasXPath;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import java.io.PrintStream;
+import java.lang.invoke.MethodHandles;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Map;
+
+import static io.restassured.RestAssured.given;
 
 public abstract class AbstractApiMethod extends HttpClient {
     private static final Logger LOGGER = Logger.getLogger(MethodHandles.lookup().lookupClass());
@@ -77,6 +70,9 @@ public abstract class AbstractApiMethod extends HttpClient {
     private boolean logRequest = Configuration.getBoolean(Parameter.LOG_ALL_JSON);
     private boolean logResponse = Configuration.getBoolean(Parameter.LOG_ALL_JSON);
     private boolean ignoreSSL = Configuration.getBoolean(Parameter.IGNORE_SSL);
+
+    private PrintStream requestPrintStream = null;
+    private PrintStream responsePrintStream = null;
 
     public AbstractApiMethod() {
         init(getClass());
@@ -208,18 +204,15 @@ public abstract class AbstractApiMethod extends HttpClient {
         request.expect().body(HasXPath.hasXPath(xPath));
     }
 
-    private void initLogging(PrintStream ps) {
-
+    private void initRequestLogging(PrintStream ps) {
         if (logRequest) {
             HideRequestHeadersInLogs hideHeaders = this.getClass().getAnnotation(HideRequestHeadersInLogs.class);
             RequestLoggingFilter fHeaders = new RequestLoggingFilter(LogDetail.HEADERS, true, ps, true,
                     hideHeaders == null ? Collections.emptySet() : new HashSet<String>(Arrays.asList(hideHeaders.headers())));
-
             RequestLoggingFilter fCookies = new RequestLoggingFilter(LogDetail.COOKIES, ps);
             RequestLoggingFilter fParams = new RequestLoggingFilter(LogDetail.PARAMS, ps);
             RequestLoggingFilter fMethod = new RequestLoggingFilter(LogDetail.METHOD, ps);
             RequestLoggingFilter fUri = new RequestLoggingFilter(LogDetail.URI, ps);
-
             RequestLoggingFilter fBody;
             HideRequestBodyPartsInLogs hideRqBody = this.getClass().getAnnotation(HideRequestBodyPartsInLogs.class);
 
@@ -231,12 +224,13 @@ public abstract class AbstractApiMethod extends HttpClient {
 
             request.filters(fMethod, fUri, fParams, fCookies, fHeaders, fBody);
         }
+    }
 
+    private void initResponseLogging(PrintStream ps) {
         if (logResponse) {
             ResponseLoggingFilter fStatus = new ResponseLoggingFilter(LogDetail.STATUS, ps);
             ResponseLoggingFilter fHeaders = new ResponseLoggingFilter(LogDetail.HEADERS, ps);
             ResponseLoggingFilter fCookies = new ResponseLoggingFilter(LogDetail.COOKIES, ps);
-
             ResponseLoggingFilter fBody;
             HideResponseBodyPartsInLogs a = this.getClass().getAnnotation(HideResponseBodyPartsInLogs.class);
             if (a != null) {
@@ -245,7 +239,6 @@ public abstract class AbstractApiMethod extends HttpClient {
             } else {
                 fBody = new ResponseLoggingFilter(LogDetail.BODY, ps);
             }
-
             request.filters(fBody, fCookies, fHeaders, fStatus);
         }
     }
@@ -261,19 +254,33 @@ public abstract class AbstractApiMethod extends HttpClient {
 
         Response rs = null;
 
-        PrintStream ps = null;
-        if (logRequest || logResponse) {
-            ps = new PrintStream(new LoggingOutputStream(LOGGER, Level.INFO));
-            initLogging(ps);
+        if(logRequest) {
+            requestPrintStream = new PrintStream(new LoggingOutputStream(LOGGER, Level.INFO));
+            initRequestLogging(requestPrintStream);
         }
 
-        try {
-            rs = HttpClient.send(request, methodPath, methodType);
-        } finally {
-            if (ps != null)
-                ps.close();
+        if(logResponse) {
+            responsePrintStream = new PrintStream(new LoggingOutputStream(LOGGER, Level.INFO));
+            initResponseLogging(responsePrintStream);
         }
+        rs = HttpClient.send(request, methodPath, methodType);
         return rs;
+    }
+
+    public void logRequest() {
+        if (requestPrintStream != null) {
+            if (logRequest)
+                requestPrintStream.flush();
+            requestPrintStream.close();
+        }
+    }
+
+    public void logResponse() {
+        if (responsePrintStream != null) {
+            if (logResponse)
+                responsePrintStream.flush();
+            responsePrintStream.close();
+        }
     }
 
     public void expectInResponse(Matcher<?> matcher) {
