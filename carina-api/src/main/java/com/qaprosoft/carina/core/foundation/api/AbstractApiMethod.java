@@ -205,7 +205,6 @@ public abstract class AbstractApiMethod extends HttpClient {
     }
 
     private void initRequestLogging(PrintStream ps) {
-        if (logRequest) {
             HideRequestHeadersInLogs hideHeaders = this.getClass().getAnnotation(HideRequestHeadersInLogs.class);
             RequestLoggingFilter fHeaders = new RequestLoggingFilter(LogDetail.HEADERS, true, ps, true,
                     hideHeaders == null ? Collections.emptySet() : new HashSet<String>(Arrays.asList(hideHeaders.headers())));
@@ -223,11 +222,9 @@ public abstract class AbstractApiMethod extends HttpClient {
             }
 
             request.filters(fMethod, fUri, fParams, fCookies, fHeaders, fBody);
-        }
     }
 
     private void initResponseLogging(PrintStream ps) {
-        if (logResponse) {
             ResponseLoggingFilter fStatus = new ResponseLoggingFilter(LogDetail.STATUS, ps);
             ResponseLoggingFilter fHeaders = new ResponseLoggingFilter(LogDetail.HEADERS, ps);
             ResponseLoggingFilter fCookies = new ResponseLoggingFilter(LogDetail.COOKIES, ps);
@@ -240,7 +237,6 @@ public abstract class AbstractApiMethod extends HttpClient {
                 fBody = new ResponseLoggingFilter(LogDetail.BODY, ps);
             }
             request.filters(fBody, fCookies, fHeaders, fStatus);
-        }
     }
 
     public Response callAPI() {
