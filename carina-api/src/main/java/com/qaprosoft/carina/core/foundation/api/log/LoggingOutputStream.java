@@ -15,11 +15,11 @@
  *******************************************************************************/
 package com.qaprosoft.carina.core.foundation.api.log;
 
-import java.io.IOException;
-import java.io.OutputStream;
-
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+
+import java.io.IOException;
+import java.io.OutputStream;
 
 public class LoggingOutputStream extends OutputStream {
 
@@ -58,6 +58,8 @@ public class LoggingOutputStream extends OutputStream {
      */
     private Level level;
 
+    // TODO: 11.02.22 add doc
+    private Boolean logging;
     /**
      * Creates the Logging instance to flush to the given logger.
      * 
@@ -70,7 +72,7 @@ public class LoggingOutputStream extends OutputStream {
      */
     public LoggingOutputStream(final Logger log, final Level level) throws IllegalArgumentException {
         if (log == null || level == null) {
-            throw new IllegalArgumentException("Logger or log level must be not null");
+            throw new IllegalArgumentException("Logger, log level or logging must be not null");
         }
         this.log = log;
         this.level = level;
@@ -124,10 +126,9 @@ public class LoggingOutputStream extends OutputStream {
     }
 
     /**
-     * Closes this output stream and releases any system resources associated with this stream.
+     * Closes this output stream
      */
     public void close() {
-        count = 0;
         hasBeenClosed = true;
     }
 }

@@ -26,6 +26,7 @@ import com.qaprosoft.carina.core.foundation.api.log.LoggingOutputStream;
 import com.qaprosoft.carina.core.foundation.api.ssl.NullHostnameVerifier;
 import com.qaprosoft.carina.core.foundation.api.ssl.NullX509TrustManager;
 import com.qaprosoft.carina.core.foundation.api.ssl.SSLContextBuilder;
+import com.qaprosoft.carina.core.foundation.api.util.RequestWrapper;
 import com.qaprosoft.carina.core.foundation.utils.Configuration;
 import com.qaprosoft.carina.core.foundation.utils.Configuration.Parameter;
 import com.qaprosoft.carina.core.foundation.utils.R;
@@ -56,6 +57,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.function.Predicate;
 
 import static io.restassured.RestAssured.given;
 
@@ -67,12 +69,9 @@ public abstract class AbstractApiMethod extends HttpClient {
     protected Object response;
     public RequestSpecification request;
     protected ContentTypeEnum contentTypeEnum;
-    private boolean logRequest = Configuration.getBoolean(Parameter.LOG_ALL_JSON);
-    private boolean logResponse = Configuration.getBoolean(Parameter.LOG_ALL_JSON);
     private boolean ignoreSSL = Configuration.getBoolean(Parameter.IGNORE_SSL);
-
-    private PrintStream requestPrintStream = null;
-    private PrintStream responsePrintStream = null;
+    private Predicate<RequestWrapper> requestLogCondition = request -> false;
+    private Predicate<Response> responseLogCondition = response -> false;
 
     public AbstractApiMethod() {
         init(getClass());
@@ -89,7 +88,6 @@ public abstract class AbstractApiMethod extends HttpClient {
             methodPath = e.url();
             return;
         }
-
         String typePath = R.API.get(clazz.getSimpleName());
         if (typePath == null) {
             throw new RuntimeException("Method type and path are not specified for: " + clazz.getSimpleName());
@@ -205,38 +203,38 @@ public abstract class AbstractApiMethod extends HttpClient {
     }
 
     private void initRequestLogging(PrintStream ps) {
-            HideRequestHeadersInLogs hideHeaders = this.getClass().getAnnotation(HideRequestHeadersInLogs.class);
-            RequestLoggingFilter fHeaders = new RequestLoggingFilter(LogDetail.HEADERS, true, ps, true,
-                    hideHeaders == null ? Collections.emptySet() : new HashSet<String>(Arrays.asList(hideHeaders.headers())));
-            RequestLoggingFilter fCookies = new RequestLoggingFilter(LogDetail.COOKIES, ps);
-            RequestLoggingFilter fParams = new RequestLoggingFilter(LogDetail.PARAMS, ps);
-            RequestLoggingFilter fMethod = new RequestLoggingFilter(LogDetail.METHOD, ps);
-            RequestLoggingFilter fUri = new RequestLoggingFilter(LogDetail.URI, ps);
-            RequestLoggingFilter fBody;
-            HideRequestBodyPartsInLogs hideRqBody = this.getClass().getAnnotation(HideRequestBodyPartsInLogs.class);
+        HideRequestHeadersInLogs hideHeaders = this.getClass().getAnnotation(HideRequestHeadersInLogs.class);
+        RequestLoggingFilter fHeaders = new RequestLoggingFilter(LogDetail.HEADERS, true, ps, true,
+                hideHeaders == null ? Collections.emptySet() : new HashSet<String>(Arrays.asList(hideHeaders.headers())));
+        RequestLoggingFilter fCookies = new RequestLoggingFilter(LogDetail.COOKIES, ps);
+        RequestLoggingFilter fParams = new RequestLoggingFilter(LogDetail.PARAMS, ps);
+        RequestLoggingFilter fMethod = new RequestLoggingFilter(LogDetail.METHOD, ps);
+        RequestLoggingFilter fUri = new RequestLoggingFilter(LogDetail.URI, ps);
+        RequestLoggingFilter fBody;
+        HideRequestBodyPartsInLogs hideRqBody = this.getClass().getAnnotation(HideRequestBodyPartsInLogs.class);
 
-            if (hideRqBody != null) {
-                fBody = new CarinaRequestBodyLoggingFilter(true, ps, new HashSet<String>(Arrays.asList(hideRqBody.paths())), contentTypeEnum);
-            } else {
-                fBody = new RequestLoggingFilter(LogDetail.BODY, ps);
-            }
+        if (hideRqBody != null) {
+            fBody = new CarinaRequestBodyLoggingFilter(true, ps, new HashSet<String>(Arrays.asList(hideRqBody.paths())), contentTypeEnum);
+        } else {
+            fBody = new RequestLoggingFilter(LogDetail.BODY, ps);
+        }
 
-            request.filters(fMethod, fUri, fParams, fCookies, fHeaders, fBody);
+        request.filters(fMethod, fUri, fParams, fCookies, fHeaders, fBody);
     }
 
     private void initResponseLogging(PrintStream ps) {
-            ResponseLoggingFilter fStatus = new ResponseLoggingFilter(LogDetail.STATUS, ps);
-            ResponseLoggingFilter fHeaders = new ResponseLoggingFilter(LogDetail.HEADERS, ps);
-            ResponseLoggingFilter fCookies = new ResponseLoggingFilter(LogDetail.COOKIES, ps);
-            ResponseLoggingFilter fBody;
-            HideResponseBodyPartsInLogs a = this.getClass().getAnnotation(HideResponseBodyPartsInLogs.class);
-            if (a != null) {
-                fBody = new CarinaResponseBodyLoggingFilter(true, ps, Matchers.any(Integer.class), new HashSet<String>(Arrays.asList(a.paths())),
-                        contentTypeEnum);
-            } else {
-                fBody = new ResponseLoggingFilter(LogDetail.BODY, ps);
-            }
-            request.filters(fBody, fCookies, fHeaders, fStatus);
+        ResponseLoggingFilter fStatus = new ResponseLoggingFilter(LogDetail.STATUS, ps);
+        ResponseLoggingFilter fHeaders = new ResponseLoggingFilter(LogDetail.HEADERS, ps);
+        ResponseLoggingFilter fCookies = new ResponseLoggingFilter(LogDetail.COOKIES, ps);
+        ResponseLoggingFilter fBody;
+        HideResponseBodyPartsInLogs a = this.getClass().getAnnotation(HideResponseBodyPartsInLogs.class);
+        if (a != null) {
+            fBody = new CarinaResponseBodyLoggingFilter(true, ps, Matchers.any(Integer.class), new HashSet<String>(Arrays.asList(a.paths())),
+                    contentTypeEnum);
+        } else {
+            fBody = new ResponseLoggingFilter(LogDetail.BODY, ps);
+        }
+        request.filters(fBody, fCookies, fHeaders, fStatus);
     }
 
     public Response callAPI() {
@@ -250,33 +248,28 @@ public abstract class AbstractApiMethod extends HttpClient {
 
         Response rs = null;
 
-        if(logRequest) {
-            requestPrintStream = new PrintStream(new LoggingOutputStream(LOGGER, Level.INFO));
-            initRequestLogging(requestPrintStream);
-        }
+        request.noFilters();
+        PrintStream requestPrintStream = new PrintStream(new LoggingOutputStream(LOGGER, Level.INFO));
+        initRequestLogging(requestPrintStream);
+        PrintStream responsePrintStream = new PrintStream(new LoggingOutputStream(LOGGER, Level.INFO));
+        initResponseLogging(responsePrintStream);
 
-        if(logResponse) {
-            responsePrintStream = new PrintStream(new LoggingOutputStream(LOGGER, Level.INFO));
-            initResponseLogging(responsePrintStream);
-        }
-        rs = HttpClient.send(request, methodPath, methodType);
-        return rs;
-    }
+        RequestWrapper requestWrapper = new RequestWrapper(bodyContent, methodPath, methodType);
 
-    public void logRequest() {
-        if (requestPrintStream != null) {
-            if (logRequest)
+        try {
+            rs = HttpClient.send(request, methodPath, methodType);
+        } finally {
+            if (requestLogCondition.test(requestWrapper)) {
                 requestPrintStream.flush();
+            }
             requestPrintStream.close();
-        }
-    }
 
-    public void logResponse() {
-        if (responsePrintStream != null) {
-            if (logResponse)
+            if (responseLogCondition.test(rs)) {
                 responsePrintStream.flush();
+            }
             responsePrintStream.close();
         }
+        return rs;
     }
 
     public void expectInResponse(Matcher<?> matcher) {
@@ -310,14 +303,6 @@ public abstract class AbstractApiMethod extends HttpClient {
     
     public Object getResponse() {
         return response;
-    }
-
-    public void setLogRequest(boolean logRequest) {
-        this.logRequest = logRequest;
-    }
-
-    public void setLogResponse(boolean logResponse) {
-        this.logResponse = logResponse;
     }
 
     public void ignoreSSLCerts() {
@@ -356,6 +341,14 @@ public abstract class AbstractApiMethod extends HttpClient {
 
     public void setDefaultTLSSupport() {
         setSSLContext(new SSLContextBuilder(true).createSSLContext());
+    }
+
+    public void setRequestLogCondition(Predicate<RequestWrapper> requestLogCondition) {
+        this.requestLogCondition = requestLogCondition;
+    }
+
+    public void setResponseLogCondition(Predicate<Response> responseLogCondition) {
+        this.responseLogCondition = responseLogCondition;
     }
 
 }

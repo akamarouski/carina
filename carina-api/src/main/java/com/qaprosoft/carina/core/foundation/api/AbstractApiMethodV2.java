@@ -24,6 +24,7 @@ import com.qaprosoft.carina.core.foundation.api.annotation.RequestTemplatePath;
 import com.qaprosoft.carina.core.foundation.api.annotation.ResponseTemplatePath;
 import com.qaprosoft.carina.core.foundation.api.annotation.SuccessfulHttpStatus;
 import com.qaprosoft.carina.core.foundation.api.util.ApiActionPoller;
+import com.qaprosoft.carina.core.foundation.api.util.RequestWrapper;
 import io.restassured.response.Response;
 import org.json.JSONException;
 import org.skyscreamer.jsonassert.JSONAssert;
@@ -40,6 +41,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.function.Predicate;
 
 public abstract class AbstractApiMethodV2 extends AbstractApiMethod {
     private static final Logger LOGGER = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -47,6 +49,8 @@ public abstract class AbstractApiMethodV2 extends AbstractApiMethod {
     private static final String ACCEPT_ALL_HEADER = "Accept=*/*";
     private static final Duration POLLING_INTERVAL = Duration.ofSeconds(1);
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
+    private static final Predicate<RequestWrapper> REQUEST_LOGGING = request -> true;
+    private static final Predicate<Response> RESPONSE_LOGGING = response -> true;
 
     private Properties properties;
     private List<Class<? extends PropertiesProcessor>> ignoredPropertiesProcessorClasses;
@@ -145,18 +149,20 @@ public abstract class AbstractApiMethodV2 extends AbstractApiMethod {
     }
 
     /**
-     * Calls callAPI function that will repeat its execution until a certain condition is met
-     * or the time  runs out
+     * Repeats calling of an api until we get the expected response. Also we can control request/response logging by setting
+     * conditions depend on request/response respectively
      *
-     * @return object of ApiActionPoller class for setting other parameters for builder or calling execute method for
-     * getting the final result
+     * @return request builder for setting interval, timeout and so on
      */
-    public ApiActionPoller callAPIWithRetry() {
-        return ApiActionPoller.builder(this)
+    public ApiActionPoller.Builder callAPIWithRetry() {
+        return ApiActionPoller.builder()
+                .apiMethod(this)
+                .action(this::callAPI)
+                .until(Objects::nonNull)
                 .pollEvery(POLLING_INTERVAL.toMillis(), ChronoUnit.MILLIS)
                 .stopAfter(TIMEOUT.toMillis(), ChronoUnit.MILLIS)
-                .until(Objects::nonNull)
-                .setLoggingStrategy(rq -> true, rs -> true);
+                .requestLogging(REQUEST_LOGGING)
+                .responseLogging(RESPONSE_LOGGING);
     }
 
     /**
